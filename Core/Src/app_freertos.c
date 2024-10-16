@@ -49,27 +49,36 @@
 
 /* USER CODE END Variables */
 /* Definitions for defaultTask */
-osThreadId_t defaultTaskHandle;
-osThreadId_t secondTaskHandle;
-const osThreadAttr_t defaultTask_attributes = {
-  .name = "defaultTask",
+osThreadId_t NormalTaskHandle;
+osThreadId_t HighTaskHandle;
+osThreadId_t LowTaskHandle;
+osSemaphoreId_t BinSemHandle;
+
+const osThreadAttr_t NormalTask_attributes = {
+  .name = "NormalTask",
   .priority = (osPriority_t) osPriorityNormal,
   .stack_size = 128 * 4
 };
 
-const osThreadAttr_t secondTask_attributes = {
-  .name = "secondTask",
-  .priority = (osPriority_t) osPriorityNormal, // Same priority as defaultTask
+const osThreadAttr_t HighTask_attributes = {
+  .name = "HighTask",
+  .priority = (osPriority_t) osPriorityAboveNormal, // 
   .stack_size = 128 * 4
 };
 
+const osThreadAttr_t LowTask_attributes = {
+  .name = "LowTask",
+  .priority = (osPriority_t) osPriorityBelowNormal, // 
+  .stack_size = 128 * 4
+};
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
 
 /* USER CODE END FunctionPrototypes */
 
-void StartDefaultTask(void *argument);
-void StartSecondTask(void *argument);
+void StartNormalTask(void *argument);
+void StartHighTask(void *argument);
+void StartLowTask(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -115,11 +124,14 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
   /* USER CODE END RTOS_QUEUES */
-  /* creation of defaultTask */
-  defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
+  /* creation of NormalTask */
+  NormalTaskHandle = osThreadNew(StartNormalTask, NULL, &NormalTask_attributes);
 
-  /* Create the secondTask */
-  secondTaskHandle = osThreadNew(StartSecondTask, NULL, &secondTask_attributes);
+  /* Create the HighTask */
+  HighTaskHandle = osThreadNew(StartHighTask, NULL, &HighTask_attributes);
+
+ /* Create the LowTask */
+  LowTaskHandle = osThreadNew(StartLowTask, NULL, &LowTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -137,26 +149,56 @@ void MX_FREERTOS_Init(void) {
 * @retval None
 */
 /* USER CODE END Header_StartDefaultTask */
-void StartDefaultTask(void *argument)
+void StartNormalTask(void *argument)
 {
   /* USER CODE BEGIN defaultTask */
   /* Infinite loop */
   for(;;)
   {
     //BSP_LED_Toggle(LED_GREEN);
-    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_6);
-    printf("Hello FreeRTOS!\r\n");
-    osDelay(pdMS_TO_TICKS(1000));
+		printf("Entered MediumTask\n");
+    
+		
+    printf("Leaving MediumTask\n\n");
+    
+    osDelay(pdMS_TO_TICKS(500));
   }
   /* USER CODE END defaultTask */
 }
 
 /* Second task function */
-void StartSecondTask(void *argument) {
+void StartHighTask(void *argument) {
   for(;;) {
-    HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_0);
-    printf("Hello from the second task!\r\n");
-    osDelay(pdMS_TO_TICKS(1000)); // Delay of 1 second
+	printf("Entered HighTask and waiting for Semaphore\n");
+	
+
+	//osSemaphoreWait(BinSemHandle, osWaitForever);
+
+	printf("Semaphore acquired by HIGH Task\n");
+	
+
+	printf("Leaving HighTask and releasing Semaphore\n\n");
+	
+    osDelay(pdMS_TO_TICKS(500)); // Delay of 1 second
+  }
+}
+void StartLowTask(void *argument) {
+  for(;;) {
+		printf("Entered LOWTask and waiting for semaphore\n");
+		
+
+		//osSemaphoreWait(BinSemHandle, osWaitForever);
+
+		printf("Semaphore acquired by LOW Task\n");
+		
+
+		//while (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));  // wait till the pin go low
+
+		printf( "Leaving LOWTask and releasing Semaphore\n\n");
+		
+
+		//osSemaphoreRelease(BinSemHandle);
+    osDelay(pdMS_TO_TICKS(500)); // Delay of 1 second
   }
 }
 
