@@ -115,6 +115,7 @@ void MX_FREERTOS_Init(void) {
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
   /* add semaphores, ... */
+  BinSemHandle = osSemaphoreNew(1, 1, NULL);
   /* USER CODE END RTOS_SEMAPHORES */
 
   /* USER CODE BEGIN RTOS_TIMERS */
@@ -172,7 +173,7 @@ void StartHighTask(void *argument) {
 	printf("Entered HighTask and waiting for Semaphore\n");
 	
 
-	//osSemaphoreWait(BinSemHandle, osWaitForever);
+	osSemaphoreAcquire(BinSemHandle, osWaitForever);
 
 	printf("Semaphore acquired by HIGH Task\n");
 	
@@ -187,17 +188,18 @@ void StartLowTask(void *argument) {
 		printf("Entered LOWTask and waiting for semaphore\n");
 		
 
-		//osSemaphoreWait(BinSemHandle, osWaitForever);
+		osSemaphoreAcquire(BinSemHandle, osWaitForever);
 
 		printf("Semaphore acquired by LOW Task\n");
 		
 
-		//while (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));  // wait till the pin go low
+		//while (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13)==0);  // wait till the pin go low
+    osDelay(pdMS_TO_TICKS(1000));
 
 		printf( "Leaving LOWTask and releasing Semaphore\n\n");
 		
 
-		//osSemaphoreRelease(BinSemHandle);
+		osSemaphoreRelease(BinSemHandle);
     osDelay(pdMS_TO_TICKS(500)); // Delay of 1 second
   }
 }
