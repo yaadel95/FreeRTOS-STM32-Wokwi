@@ -193,8 +193,8 @@ void StartLowTask(void *argument) {
 		printf("Semaphore acquired by LOW Task\n");
 		
 
-		//while (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13)==0);  // wait till the pin go low
-    osDelay(pdMS_TO_TICKS(1000));
+		while (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));  // wait till the pin go low
+    
 
 		printf( "Leaving LOWTask and releasing Semaphore\n\n");
 		
