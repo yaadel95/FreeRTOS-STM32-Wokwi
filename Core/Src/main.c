@@ -6,24 +6,33 @@
   ******************************************************************************
   * @attention
   *
-  * Copyright (c) 2024 STMicroelectronics.
-  * All rights reserved.
+  * <h2><center>&copy; Copyright (c) 2020 STMicroelectronics.
+  * All rights reserved.</center></h2>
   *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
+  * This software component is licensed by ST under BSD 3-Clause license,
+  * the "License"; You may not use this file except in compliance with the
+  * License. You may obtain a copy of the License at:
+  *                        opensource.org/licenses/BSD-3-Clause
   *
   ******************************************************************************
   */
 /* USER CODE END Header */
+
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "cmsis_os2.h"
-#include "stm32c0xx_nucleo.h"
-#include <stdio.h>
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+
+#include "FreeRTOS.h"
+#include "task.h"
+#include "timers.h"
+#include "queue.h"
+#include "semphr.h"
+#include "event_groups.h"
+#include "stm32c0xx_nucleo.h"
+#include "string.h"
+#include "stdio.h"
 
 /* USER CODE END Includes */
 
@@ -34,7 +43,6 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -43,22 +51,38 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+UART_HandleTypeDef huart2;
 
-COM_InitTypeDef BspCOMInit;
 /* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
-void MX_FREERTOS_Init(void);
 static void MX_GPIO_Init(void);
+static void MX_USART2_UART_Init(void);
+
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+/**************** TASK HANDLERS ***********************/
+xTaskHandle Sender_HPT_Handler;
+xTaskHandle Sender_LPT_Handler;
+xTaskHandle Receiver_Handler;
+
+/**************** QUEUE HANDLER ***********************/
+xQueueHandle SimpleQueue;
+
+/**************** TASK FUNCTIONS ***********************/
+void Sender_HPT_Task (void *argument);
+void Sender_LPT_Task (void *argument);
+void Receiver_Task (void *argument);
+
+uint8_t Rx_data;
 
 /* USER CODE END 0 */
 
@@ -90,42 +114,44 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
 
-  /* USER CODE END 2 */
 
-  /* Init scheduler */
-  osKernelInitialize();
-
-  /* Call init function for freertos objects (in freertos.c) */
-  MX_FREERTOS_Init();
-
-  /* Initialize leds */
-  BSP_LED_Init(LED_GREEN);
-
-  /* Initialize USER push-button, will be used to trigger an interrupt each time it's pressed.*/
-  BSP_PB_Init(BUTTON_USER, BUTTON_MODE_EXTI);
-
-  /* Initialize COM1 port (115200, 8 bits (7-bit data + 1 stop bit), no parity */
-  BspCOMInit.BaudRate   = 115200;
-  BspCOMInit.WordLength = COM_WORDLENGTH_8B;
-  BspCOMInit.StopBits   = COM_STOPBITS_1;
-  BspCOMInit.Parity     = COM_PARITY_NONE;
-  BspCOMInit.HwFlowCtl  = COM_HWCONTROL_NONE;
-  if (BSP_COM_Init(COM1, &BspCOMInit) != BSP_ERROR_NONE)
+  /************************* Create Integer Queue ****************************/
+  SimpleQueue = xQueueCreate(5, sizeof (int));
+  if (SimpleQueue == 0)  // Queue not created
   {
-    Error_Handler();
+	  char *str = "Unable to create Integer Queue\n\n";
+	  HAL_UART_Transmit(&huart2, (uint8_t *)str, strlen (str), HAL_MAX_DELAY);
+  }
+  else
+  {
+	  char *str = "Integer Queue Created successfully\n\n";
+	  HAL_UART_Transmit(&huart2, (uint8_t *)str, strlen (str), HAL_MAX_DELAY);
   }
 
-  /* Start scheduler */
-  osKernelStart();
 
+  /****************************** TASK RELATED ******************************/
+
+  xTaskCreate(Sender_HPT_Task, "HPT_SEND", 128, NULL, 3, &Sender_HPT_Handler);
+  xTaskCreate(Sender_LPT_Task, "LPT_SEND", 128, (void *)111 , 2, &Sender_LPT_Handler);
+
+  xTaskCreate(Receiver_Task, "Receive", 128, NULL, 1, &Receiver_Handler);
+
+
+  HAL_UART_Receive_IT(&huart2, &Rx_data, 1);
+
+  vTaskStartScheduler();
+
+
+  /* USER CODE END 2 */
+ 
   /* We should never get here as control is now taken by the scheduler */
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -167,6 +193,39 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief USART2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART2_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART2_Init 0 */
+
+  /* USER CODE END USART2_Init 0 */
+
+  /* USER CODE BEGIN USART2_Init 1 */
+
+  /* USER CODE END USART2_Init 1 */
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 115200;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART2_Init 2 */
+
+  /* USER CODE END USART2_Init 2 */
+
 }
 
 /**
@@ -222,11 +281,102 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+void Sender_HPT_Task (void *argument)
+{
+	int i=222;
+	uint32_t TickDelay = pdMS_TO_TICKS(2000);
+	while (1)
+	{
+		char *str = "Entered SENDER_HPT Task\n about to SEND a number to the queue\n\n";
+		HAL_UART_Transmit(&huart2, (uint8_t *)str, strlen (str), HAL_MAX_DELAY);
+
+		if (xQueueSend(SimpleQueue, &i, portMAX_DELAY) == pdPASS)
+		{
+			char *str2 = " Successfully sent the number to the queue\nLeaving SENDER_HPT Task\n\n\n";
+			HAL_UART_Transmit(&huart2, (uint8_t *)str2, strlen (str2), HAL_MAX_DELAY);
+		}
+
+		vTaskDelay(TickDelay);
+	}
+}
+
+void Sender_LPT_Task (void *argument)
+{
+	int ToSend;
+	uint32_t TickDelay = pdMS_TO_TICKS(1000);
+	while (1)
+	{
+		ToSend = (int) argument;
+		char *str = "Entered SENDER_LPT Task\n about to SEND a number to the queue\n\n";
+		HAL_UART_Transmit(&huart2, (uint8_t *)str, strlen (str), HAL_MAX_DELAY);
+
+		xQueueSend(SimpleQueue, &ToSend, portMAX_DELAY);
+
+		char *str2 = " Successfully sent the number to the queue\nLeaving SENDER_LPT Task\n\n\n";
+		HAL_UART_Transmit(&huart2, (uint8_t *)str2, strlen (str2), HAL_MAX_DELAY);
+
+		vTaskDelay(TickDelay);
+	}
+}
+
+void Receiver_Task (void *argument)
+{
+	int received=0;
+	uint32_t TickDelay = pdMS_TO_TICKS(3000);
+	while (1)
+	{
+		char str[100];
+		strcpy (str, "Entered RECEIVER Task\n about to RECEIVE a number from the queue\n\n");
+		HAL_UART_Transmit(&huart2, (uint8_t *)str, strlen (str), HAL_MAX_DELAY);
+
+		if (xQueueReceive(SimpleQueue, &received, portMAX_DELAY) != pdTRUE)
+		{
+			HAL_UART_Transmit(&huart2, (uint8_t *)"Error in Receiving from Queue\n\n", 31, 1000);
+		}
+		else
+		{
+			sprintf(str, " Successfully RECEIVED the number %d to the queue\nLeaving RECEIVER Task\n\n\n",received);
+			HAL_UART_Transmit(&huart2, (uint8_t *)str, strlen (str), HAL_MAX_DELAY);
+		}
+
+		vTaskDelay(TickDelay);
+	}
+}
+
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+	HAL_UART_Receive_IT(huart, &Rx_data, 1);
+	int ToSend = 123456789;
+	if (Rx_data == 'r')
+	{
+		 /* The xHigherPriorityTaskWoken parameter must be initialized to pdFALSE as
+		 it will get set to pdTRUE inside the interrupt safe API function if a
+		 context switch is required. */
+		BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+
+		if (xQueueSendToFrontFromISR(SimpleQueue, &ToSend, &xHigherPriorityTaskWoken) == pdPASS)
+		{
+			HAL_UART_Transmit(huart, (uint8_t *)"\n\nSent from ISR\n\n", 17, 500);
+		}
+
+		/* Pass the xHigherPriorityTaskWoken value into portEND_SWITCHING_ISR(). If
+		 xHigherPriorityTaskWoken was set to pdTRUE inside xSemaphoreGiveFromISR()
+		 then calling portEND_SWITCHING_ISR() will request a context switch. If
+		 xHigherPriorityTaskWoken is still pdFALSE then calling
+		 portEND_SWITCHING_ISR() will have no effect */
+
+		portEND_SWITCHING_ISR(xHigherPriorityTaskWoken);
+	}
+}
+
 /* USER CODE END 4 */
 
-/**
+
+
+ /**
   * @brief  Period elapsed callback in non blocking mode
-  * @note   This function is called  when TIM1 interrupt took place, inside
+  * @note   This function is called  when TIM6 interrupt took place, inside
   * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
   * a global variable "uwTick" used as application time base.
   * @param  htim : TIM handle
@@ -253,10 +403,7 @@ void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
-  __disable_irq();
-  while (1)
-  {
-  }
+
   /* USER CODE END Error_Handler_Debug */
 }
 
@@ -269,10 +416,12 @@ void Error_Handler(void)
   * @retval None
   */
 void assert_failed(uint8_t *file, uint32_t line)
-{
+{ 
   /* USER CODE BEGIN 6 */
   /* User can add his own implementation to report the file name and line number,
-     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+     tex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
+
+/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
